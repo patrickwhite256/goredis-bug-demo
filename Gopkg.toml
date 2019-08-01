@@ -1,0 +1,7 @@
+[[constraint]]
+  name = "github.com/go-redis/redis"
+  revision = "6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f"
+
+[prune]
+  go-tests = true
+  unused-packages = true
