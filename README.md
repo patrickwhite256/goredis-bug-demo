@@ -1,6 +1,8 @@
 INFO
 ====
 
+Please see [go-redis/redis issue #1113](https://github.com/go-redis/redis/issues/1113) for details.
+
 This repository contains a misbehaving Redis server and simple Go code to demonstrate the issue.
 
 The Redis server isn't intended to be a real Redis server, but it does correctly respond to a few commands (`COMMAND`, `READONLY`, `ECHO`, `CLUSTER SLOTS`).
