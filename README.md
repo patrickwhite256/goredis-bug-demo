@@ -47,33 +47,33 @@ Details of how we get to the `READONLY` call (can be skipped if you're well acqu
 
 - [commands.go:322](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/commands.go#L322): This creates a [`StringCmd`](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/command.go#L597) and passes it to `c`.
 - [cluster.go:746](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/cluster.go#L746): A few levels of indirection later, the `StringCmd` is passed to `ClusterClient.process`. We assume that everything up until [L767](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/cluster.go#L767) succeeds. Since this is the first iteration, `ask` is `false` so we call `node.Client.ProcessContext(ctx, cmd)` on L755.
-- [redis.go:244](https://github.com/go-redis/redis/blob/master/redis.go#L244): Another few levels of indirection we arrive at `baseClient.process`. On L250 we call `c.getConn(ctx)`. `getConn` calls `_getConn`.
-- [redis.go:167](https://github.com/go-redis/redis/blob/master/redis.go#L167): `_getConn` requests a connection from the connection pool. Assume a clean, newly dialed connection is returned. We then call `c.initConn(cn)`.
-- [redis.go:211](https://github.com/go-redis/redis/blob/master/redis.go#L211): Since this is a new connection, the check at L206 is skipped. The options include `readOnly`, since `ReadOnly` was set on the cluster client and `ClusterOptions.clientOptions` which is passed to the `Client` from the cluster client, sets `readOnly` on [cluster.go:134](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/cluster.go#L134). Therefore, we pass this check.
-- [redis.go:218](https://github.com/go-redis/redis/blob/master/redis.go#L218): We call `newConn(c.opt, cn)`.
-- [redis.go:635](https://github.com/go-redis/redis/blob/master/redis.go#L635): `newConn` creates a `Conn` with its `connPool` containing a `NewSingleConnPool(cn)`.
-- [redis.go:218](https://github.com/go-redis/redis/blob/master/redis.go#L219): The function passed to `Pipelined` here contains only the `ReadOnly()` command based on the options.
-- [redis.go:655](https://github.com/go-redis/redis/blob/master/redis.go#L655): `Conn.Pipelined` passes its arguments to `Pipeline.Pipelined()` with `exec` as `c.processPipeline` (see [redis.go:659](https://github.com/go-redis/redis/blob/master/redis.go#L659)).
-- [pipeline.go:122](https://github.com/go-redis/redis/blob/master/redis.go#L122): This is where the `ReadOnly` call is added to the pipeline, and `c.Exec` is called. Eventually that reaches the `processPipeline` we passed as `exec` earler.
+- [redis.go:244](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L244): Another few levels of indirection we arrive at `baseClient.process`. On L250 we call `c.getConn(ctx)`. `getConn` calls `_getConn`.
+- [redis.go:167](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L167): `_getConn` requests a connection from the connection pool. Assume a clean, newly dialed connection is returned. We then call `c.initConn(cn)`.
+- [redis.go:211](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L211): Since this is a new connection, the check at L206 is skipped. The options include `readOnly`, since `ReadOnly` was set on the cluster client and `ClusterOptions.clientOptions` which is passed to the `Client` from the cluster client, sets `readOnly` on [cluster.go:134](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/cluster.go#L134). Therefore, we pass this check.
+- [redis.go:218](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L218): We call `newConn(c.opt, cn)`.
+- [redis.go:635](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L635): `newConn` creates a `Conn` with its `connPool` containing a `NewSingleConnPool(cn)`.
+- [redis.go:218](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L219): The function passed to `Pipelined` here contains only the `ReadOnly()` command based on the options.
+- [redis.go:655](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L655): `Conn.Pipelined` passes its arguments to `Pipeline.Pipelined()` with `exec` as `c.processPipeline` (see [redis.go:659](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L659)).
+- [pipeline.go:122](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L122): This is where the `ReadOnly` call is added to the pipeline, and `c.Exec` is called. Eventually that reaches the `processPipeline` we passed as `exec` earler.
 
 **This is where the bug occurs**
-- [redis.go:319](https://github.com/go-redis/redis/blob/master/redis.go#L319): We call `generalProcessPipeline` with `pipelineProcessCmds` as `p`
-- [redis.go:337](https://github.com/go-redis/redis/blob/master/redis.go#L337): We call `getConn`.
-- [redis.go:167](https://github.com/go-redis/redis/blob/master/redis.go#L337): We call `connPool.Get()`. Since this is `SingleConnPool`, the pool's one `cn` is returned ([pool_single.go:25](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/internal/pool/pool_single.go#L25)). We call `initConn`, but the `cn` is already marked as `Inited`, so this is skipped and we return `cn`.
-- [redis.go:343](https://github.com/go-redis/redis/blob/master/redis.go#L337): We call `p(ctx, cn, cmds)`. `p` is `c.pipelineProcessCmds`.
+- [redis.go:319](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L319): We call `generalProcessPipeline` with `pipelineProcessCmds` as `p`
+- [redis.go:337](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L337): We call `getConn`.
+- [redis.go:167](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L337): We call `connPool.Get()`. Since this is `SingleConnPool`, the pool's one `cn` is returned ([pool_single.go:25](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/internal/pool/pool_single.go#L25)). We call `initConn`, but the `cn` is already marked as `Inited`, so this is skipped and we return `cn`.
+- [redis.go:343](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L337): We call `p(ctx, cn, cmds)`. `p` is `c.pipelineProcessCmds`.
 - To recap: `c` is the `Conn`, `cn` is the SingleConnPool's connection, `cmds` is a list containing only `READONLY` (a `StatusCmd`).
 - Assume that writing the response to the connection is fine and has no errors.
-- Assume that the Redis server is under load and is slow to write the reply (`+OK`). This causes a timeout and `pipelineProcessCmds` returns `true, (timeout error)` at [redis.go:367](https://github.com/go-redis/redis/blob/master/redis.go#L367).
-- [redis.go:344](https://github.com/go-redis/redis/blob/master/redis.go#L344): We call `c.releaseConnStrict(err)`.
-- [redis.go:201](https://github.com/go-redis/redis/blob/master/redis.go#L201): Since the error was not a Redis error, we call `c.connPool.Remove`.
+- Assume that the Redis server is under load and is slow to write the reply (`+OK`). This causes a timeout and `pipelineProcessCmds` returns `true, (timeout error)` at [redis.go:367](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L367).
+- [redis.go:344](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L344): We call `c.releaseConnStrict(err)`.
+- [redis.go:201](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L201): Since the error was not a Redis error, we call `c.connPool.Remove`.
 - [pool_single.go:35](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/internal/pool/pool_single.go#L35) **`SingleConnPool.Remove` does nothing.**
-- [redis.go:337](https://github.com/go-redis/redis/blob/master/redis.go#L337): Second attempt (due to `MaxRetries`) We call `getConn`. We again get the connection from the `SingleConnPool` (the one used before).
-- [redis.go:356](https://github.com/go-redis/redis/blob/master/redis.go#L356): We succesfully write the `READONLY` command, then read the reply. By now, the response from the first `READONLY` has come to the connection, so it is read (since responses are read line-by-line, this only reads the first `+OK` response).
+- [redis.go:337](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L337): Second attempt (due to `MaxRetries`) We call `getConn`. We again get the connection from the `SingleConnPool` (the one used before).
+- [redis.go:356](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L356): We succesfully write the `READONLY` command, then read the reply. By now, the response from the first `READONLY` has come to the connection, so it is read (since responses are read line-by-line, this only reads the first `+OK` response).
 
 We now return with no error all the way back up the stack, but Redis has been sent a second `READONLY` command, which will reply with `+OK`, and be buffered in the connection.
 
-- [redis.go:250](https://github.com/go-redis/redis/blob/master/redis.go#L250): The connection is eventually returned here, with no error, but with the buffered `+OK` response.
-- [redis.go:259](https://github.com/go-redis/redis/blob/master/redis.go#L259): We sucessfully write our `ECHO message`. We then read the reply, which reads the `+OK` response. `StringCmd.readReply` calls `Reader.ReadString`, which can parse status replies as though they were strings (since they are).
+- [redis.go:250](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L250): The connection is eventually returned here, with no error, but with the buffered `+OK` response.
+- [redis.go:259](https://github.com/go-redis/redis/blob/6bc7daa5b1e86745a6976ac1c4dfe6c76ea6af1f/redis.go#L259): We sucessfully write our `ECHO message`. We then read the reply, which reads the `+OK` response. `StringCmd.readReply` calls `Reader.ReadString`, which can parse status replies as though they were strings (since they are).
 
 
 At this point, the `ECHO` command returns `OK` instead of `message`, with no error.
